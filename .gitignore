@@ -8,7 +8,6 @@ env/
 *.db
 *.sqlite
 *.sqlite3
-sqlite/
 
 *.log
 logs/
