@@ -14,3 +14,14 @@ class Users(Model):
     class Meta:
         table = "users"
         app = "models_users"
+
+
+class UserNotification(Model):
+    id = fields.IntField(pk=True)
+    user_id = fields.IntField()
+    city = fields.CharField(max_length=255)
+    notification_time = fields.CharField(max_length=5)  # "HH:MM"
+
+    class Meta:
+        table = "user_notifications"
+        app = "models_users"

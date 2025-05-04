@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional, Tuple, Dict, Any
-from database.models import Users
+from database.models import Users, UserNotification
 
 logger = logging.getLogger(__name__)
 
@@ -67,3 +67,15 @@ async def get_users_for_notifications(current_time: str) -> List[Users]:
     except Exception as e:
         logger.error(f"Ошибка при получении пользователей для уведомлений: {e}")
         return []
+
+async def add_notification(user_id: int, city: str, time: str):
+    await UserNotification.create(user_id=user_id, city=city, notification_time=time)
+
+async def get_notifications(user_id: int):
+    return await UserNotification.filter(user_id=user_id)
+
+async def delete_notification(user_id: int, notification_id: int):
+    await UserNotification.filter(user_id=user_id, id=notification_id).delete()
+
+async def get_notifications_for_time(current_time: str):
+    return await UserNotification.filter(notification_time=current_time)

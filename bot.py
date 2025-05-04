@@ -8,8 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
-from weather import get_weather
-from database.users import add_user, update_user_city, update_user_notification_time
+from weather import get_weather, get_weather_by_coords
+from database.users import add_user, add_notification, get_notifications, delete_notification
 from notifications import send_weather_notifications
 
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +37,7 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("setup"))
 async def cmd_setup(message: Message, state: FSMContext):
-    await message.answer("Давайте настроим ежедневные уведомления о погоде. В каком городе вы хотите получать прогноз?")
+    await message.answer("Давайте добавим новую рассылку. Введите город:")
     await state.set_state(NotificationSetup.waiting_for_city)
 
 @dp.message(StateFilter(NotificationSetup.waiting_for_city))
@@ -45,13 +45,9 @@ async def process_city(message: Message, state: FSMContext):
     city = message.text
     try:
         await get_weather(city)
-        # Сохраняем город в состоянии
         await state.update_data(city=city)
-        await update_user_city(message.from_user.id, city)
-        
         await message.answer(
-            f"Отлично! Город {city} установлен. Теперь укажите время для ежедневных уведомлений в формате ЧЧ:ММ (например, 08:00)"
-        )
+            f"Город {city} принят. Теперь укажите время для уведомлений в формате ЧЧ:ММ (например, 08:00)")
         await state.set_state(NotificationSetup.waiting_for_time)
     except Exception as e:
         await message.answer(f"Не удалось найти город {city}. Пожалуйста, проверьте название и попробуйте снова.")
@@ -59,26 +55,67 @@ async def process_city(message: Message, state: FSMContext):
 @dp.message(StateFilter(NotificationSetup.waiting_for_time))
 async def process_time(message: Message, state: FSMContext):
     time_text = message.text
-    
     if not re.match(r'^([01]\d|2[0-3]):([0-5]\d)$', time_text):
         await message.answer("Пожалуйста, укажите время в формате ЧЧ:ММ (например, 08:00)")
         return
-    
     data = await state.get_data()
     city = data.get('city')
-    
-    await update_user_notification_time(message.from_user.id, time_text)
-    
+    await add_notification(message.from_user.id, city, time_text)
     await message.answer(
-        f"Настройка завершена! Вы будете получать прогноз погоды для города {city} каждый день в {time_text}.\n\n"
-        f"Вы можете изменить настройки в любое время с помощью команды /setup."
-    )
-    
+        f"Рассылка добавлена! Вы будете получать прогноз погоды для города {city} каждый день в {time_text}.\n\n"
+        f"Посмотреть все свои рассылки: /my_notifications\nУдалить рассылку: /delete_notification")
+    await state.clear()
+
+@dp.message(Command("my_notifications"))
+async def cmd_my_notifications(message: Message):
+    notifs = await get_notifications(message.from_user.id)
+    if not notifs:
+        await message.answer("У вас нет активных рассылок. Добавьте через /setup.")
+        return
+    text = "Ваши рассылки:\n"
+    for n in notifs:
+        text += f"ID: {n.id} | Город: {n.city} | Время: {n.notification_time}\n"
+    await message.answer(text)
+
+@dp.message(Command("delete_notification"))
+async def cmd_delete_notification(message: Message, state: FSMContext):
+    notifs = await get_notifications(message.from_user.id)
+    if not notifs:
+        await message.answer("У вас нет рассылок для удаления.")
+        return
+    text = "Введите ID рассылки, которую хотите удалить.\n"
+    for n in notifs:
+        text += f"ID: {n.id} | Город: {n.city} | Время: {n.notification_time}\n"
+    await message.answer(text)
+    await state.set_state("waiting_for_delete_id")
+
+@dp.message(StateFilter("waiting_for_delete_id"))
+async def process_delete_id(message: Message, state: FSMContext):
+    try:
+        notif_id = int(message.text.strip())
+        await delete_notification(message.from_user.id, notif_id)
+        await message.answer("Рассылка удалена!")
+    except Exception:
+        await message.answer("Ошибка! Проверьте ID и попробуйте снова.")
     await state.clear()
 
 @dp.message(Command("weather"))
 async def cmd_weather(message: Message):
     await message.answer("Напишите название города для получения текущей погоды")
+
+@dp.message(F.location)
+async def get_weather_for_location(message: Message):
+    location = message.location
+    if location is None:
+        await message.answer("Не удалось получить координаты. Попробуйте снова.")
+        return
+    try:
+        weather_data = await get_weather_by_coords(location.latitude, location.longitude)
+        await message.answer(weather_data)
+    except Exception as e:
+        await message.answer(f"Произошла ошибка: {e}")
+        await message.answer("Не удалось получить погоду по координатам. Попробуйте позже.")
+
 
 @dp.message(~F.text.startswith('/'))
 async def get_weather_for_city(message: Message):
