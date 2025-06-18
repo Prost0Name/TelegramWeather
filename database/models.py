@@ -17,8 +17,8 @@ class Users(Model):
 
 
 class UserNotification(Model):
-    id = fields.BigIntField(pk=True)
-    user_id = fields.IntField()
+    id = fields.IntField(pk=True)
+    user_id = fields.BigIntField()
     city = fields.CharField(max_length=255)
     notification_time = fields.CharField(max_length=5)  # "HH:MM"
 
